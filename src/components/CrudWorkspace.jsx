@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Edit3, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useCrudStore } from '../hooks/useCrudStore';
+import { currencyFormat } from '../lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,6 +47,14 @@ function StatusChip({ value }) {
   );
 }
 
+function formatCellValue(column, value) {
+  if (column.format === 'currency') {
+    return currencyFormat(value);
+  }
+
+  return value;
+}
+
 function DeleteRecordDialog({ row, onDelete, trigger }) {
   return (
     <AlertDialog>
@@ -74,7 +83,7 @@ function DeleteRecordDialog({ row, onDelete, trigger }) {
 }
 
 export default function CrudWorkspace({ moduleKey, config, requestedAction, onActionHandled }) {
-  const { rows, auditLogs, metrics, loading, saving, error, reloadRows, createRow, updateRow, deleteRow } = useCrudStore(moduleKey);
+  const { rows, metrics, loading, saving, error, reloadRows, createRow, updateRow, deleteRow } = useCrudStore(moduleKey, config.seed);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState('idle');
   const [editingRow, setEditingRow] = useState(null);
@@ -235,7 +244,7 @@ export default function CrudWorkspace({ moduleKey, config, requestedAction, onAc
                   <tr key={row.id} className="transition-colors hover:bg-surface/70">
                     {config.columns.map((column) => (
                       <td key={column.key} className="px-6 py-4 text-sm font-semibold text-on-surface">
-                        {column.key === 'status' ? <StatusChip value={row[column.key]} /> : row[column.key]}
+                        {column.key === 'status' ? <StatusChip value={row[column.key]} /> : formatCellValue(column, row[column.key])}
                       </td>
                     ))}
                     <td className="px-6 py-4">
@@ -272,7 +281,7 @@ export default function CrudWorkspace({ moduleKey, config, requestedAction, onAc
                   <div className="min-w-0">
                     <p className="truncate font-headline text-lg font-bold text-on-surface">{row.name}</p>
                     <p className="mt-1 text-sm font-semibold text-on-surface-variant">
-                      {config.columns.filter((column) => column.key !== 'name' && column.key !== 'status').slice(0, 2).map((column) => row[column.key]).join(' • ')}
+                      {config.columns.filter((column) => column.key !== 'name' && column.key !== 'status').slice(0, 2).map((column) => formatCellValue(column, row[column.key])).join(' • ')}
                     </p>
                   </div>
                   <StatusChip value={row.status} />
@@ -342,6 +351,7 @@ export default function CrudWorkspace({ moduleKey, config, requestedAction, onAc
                   <Input
                     value={formValues[field.key]}
                     onChange={(event) => setFormValues((values) => ({ ...values, [field.key]: event.target.value }))}
+                    type={field.type === 'number' ? 'number' : 'text'}
                     placeholder={field.placeholder}
                     required
                   />

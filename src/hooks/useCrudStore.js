@@ -5,6 +5,7 @@ async function requestJson(url, options) {
 
   try {
     response = await fetch(url, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -32,8 +33,8 @@ async function requestJson(url, options) {
   return payload;
 }
 
-export function useCrudStore(moduleKey) {
-  const [rows, setRows] = useState([]);
+export function useCrudStore(moduleKey, seedRows = []) {
+  const [rows, setRows] = useState(seedRows);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +51,7 @@ export function useCrudStore(moduleKey) {
       const nextRows = await requestJson(apiBase);
       setRows(nextRows);
     } catch (requestError) {
-      setRows([]);
+      setRows(seedRows);
       setError(requestError.message === 'Failed to fetch' ? 'Backend offline' : requestError.message);
     } finally {
       setLoading(false);
@@ -69,7 +70,7 @@ export function useCrudStore(moduleKey) {
   useEffect(() => {
     loadRows();
     loadAuditLogs();
-  }, [apiBase, auditBase]);
+  }, [apiBase, auditBase, seedRows]);
 
   const metrics = useMemo(() => {
     const activeRows = rows.filter((row) => !/pending|service|waitlist|due/i.test(row.status || ''));

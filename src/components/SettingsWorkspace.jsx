@@ -16,7 +16,7 @@ const ownerOptions = ['Manager', 'Front desk', 'Admin'];
 const statusOptions = ['Active', 'Paused', 'Disabled'];
 
 export default function SettingsWorkspace({ config }) {
-  const { rows, loading, saving, error, reloadRows, updateRow } = useCrudStore('Settings');
+  const { rows, loading, saving, error, reloadRows, updateRow } = useCrudStore('Settings', config.seed);
   const [query, setQuery] = useState('');
   const [drafts, setDrafts] = useState({});
   const [lastSaved, setLastSaved] = useState('');

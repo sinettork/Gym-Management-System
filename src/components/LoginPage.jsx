@@ -8,8 +8,9 @@ export default function LoginPage({ onLogin }) {
   const [password, setPassword] = useState('manager');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!email.trim() || !password.trim()) {
@@ -17,10 +18,16 @@ export default function LoginPage({ onLogin }) {
       return;
     }
 
-    onLogin({
-      name: 'Manager',
-      email,
-    });
+    setLoading(true);
+    setError('');
+
+    try {
+      await onLogin({ email, password });
+    } catch (loginError) {
+      setError(loginError.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -105,8 +112,8 @@ export default function LoginPage({ onLogin }) {
             </div>
           )}
 
-          <Button type="submit" className="mt-8 h-13 w-full">
-            Sign in
+          <Button type="submit" className="mt-8 h-13 w-full" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
           </Button>
         </form>
       </section>

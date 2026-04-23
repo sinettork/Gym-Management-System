@@ -63,14 +63,23 @@ Status: Implemented locally.
 
 ## Phase 6: Backend auth and permissions
 
-Status: Next.
+Status: Implemented foundation.
 
-- Add `users` table with seeded manager account.
-- Add password hashing with `crypto.scrypt` or `bcrypt`.
-- Add login/logout API endpoints.
-- Replace frontend-local session with backend-issued session token.
-- Add role permissions for manager, staff, and front desk actions.
-- Log login, logout, failed login, and permission-denied events.
+- Added `users` table with seeded manager account.
+- Added bcrypt password hashing.
+- Added JWT login, logout, and current-user endpoints.
+- Replaced frontend-local session with backend-issued httpOnly cookie session.
+- Protected module CRUD endpoints behind JWT verification.
+- Logged login and logout events.
+- Added React Router URL routes for dashboard and modules.
+
+Blueprint priority: critical.
+
+Remaining:
+
+- Add role-based permission checks beyond authenticated manager access.
+- Add refresh-token flow if longer sessions are required.
+- Add failed-login and permission-denied audit events.
 
 ## Phase 7: Connected dashboard and command search
 
@@ -81,6 +90,34 @@ Status: Planned.
 - Add cross-module command search for members, staff, equipment, classes, financials, and settings.
 - Add keyboard shortcut support after search is functional.
 - Keep the search UI hidden until it is wired.
+
+Blueprint priority: high.
+
+## Blueprint Quick Wins
+
+Status: Implemented.
+
+- Implemented: logout dialog now uses `LogOut` icon instead of `Calendar`.
+- Implemented: module pages fall back to seed data when backend is offline.
+- Implemented: unused audit log fetch removed from generic CRUD workspace.
+- Implemented: disabled buttons include `cursor-not-allowed`.
+- Implemented: `.env.example` added.
+- Implemented: `README.md` added with setup, scripts, login, and SQLite notes.
+- Already addressed: Settings no longer uses generic table CRUD.
+- Implemented: URL routing added with `react-router-dom`.
+- Implemented: financial amounts now store as numbers and render as currency.
+- Deferred: metrics row above tables was intentionally removed because it duplicated page information and created visual noise.
+
+## Blueprint v2 Alignment
+
+Status: In progress.
+
+- Current architecture still uses `useState` page switching rather than URL routing.
+- URL routing is implemented with `react-router-dom`.
+- Login is backend-authenticated with JWT httpOnly cookie.
+- Financial amounts are numeric for new and migrated records.
+- Current dashboard widgets are still mostly static.
+- Current Settings UX is now preference-style, ahead of the original blueprint note.
 
 ## Production Audit
 

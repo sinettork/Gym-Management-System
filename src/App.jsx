@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Calendar } from 'lucide-react';
+import { Calendar, LogOut } from 'lucide-react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MembershipCard from './components/MembershipCard';
@@ -24,18 +25,33 @@ import {
   AlertDialogTitle,
 } from './components/ui/alert-dialog';
 import { crudModules, settingsModule } from './data/crudConfig';
+import { useAuth } from './hooks/useAuth';
 
 const moduleConfigs = {
   ...crudModules,
   Settings: settingsModule,
 };
 
+const pageRoutes = {
+  Dashboard: '/',
+  Members: '/members',
+  Staff: '/staff',
+  Equipment: '/equipment',
+  Classes: '/classes',
+  Financials: '/financials',
+  Settings: '/settings',
+};
+
+const routePages = Object.fromEntries(Object.entries(pageRoutes).map(([page, route]) => [route, page]));
+
+function getActivePage(pathname) {
+  return routePages[pathname] || 'Dashboard';
+}
+
 function App() {
-  const [session, setSession] = useState(() => {
-    const storedSession = window.localStorage.getItem('titan-gym-session');
-    return storedSession ? JSON.parse(storedSession) : null;
-  });
-  const [activePage, setActivePage] = useState('Dashboard');
+  const { user, loading: authLoading, login, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [navExpanded, setNavExpanded] = useState(false);
   const [requestedAction, setRequestedAction] = useState(null);
   const [logoutOpen, setLogoutOpen] = useState(false);
@@ -43,10 +59,14 @@ function App() {
     month: 'short',
     day: 'numeric',
   }).format(new Date());
+  const activePage = getActivePage(location.pathname);
   const moduleConfig = moduleConfigs[activePage];
+  const navigateToPage = (page) => {
+    navigate(pageRoutes[page] || '/');
+  };
   const handleUtilityAction = (action) => {
     if (action === 'Add Member') {
-      setActivePage('Members');
+      navigateToPage('Members');
       setRequestedAction('create');
       return;
     }
@@ -56,7 +76,7 @@ function App() {
       return;
     }
 
-    setActivePage(action);
+    navigateToPage(action);
   };
   const handleQuickAction = (action) => {
     const actionMap = {
@@ -71,22 +91,28 @@ function App() {
       return;
     }
 
-    setActivePage(nextAction.page);
+    navigateToPage(nextAction.page);
     setRequestedAction(nextAction.action || null);
   };
-  const handleLogin = (nextSession) => {
-    window.localStorage.setItem('titan-gym-session', JSON.stringify(nextSession));
-    setSession(nextSession);
-    setActivePage('Dashboard');
+  const handleLogin = async (credentials) => {
+    await login(credentials);
+    navigate('/');
   };
-  const handleLogout = () => {
-    window.localStorage.removeItem('titan-gym-session');
-    setSession(null);
-    setActivePage('Dashboard');
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
     setRequestedAction(null);
   };
 
-  if (!session) {
+  if (authLoading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background">
+        <div className="h-12 w-12 animate-pulse rounded-full bg-primary-container" />
+      </div>
+    );
+  }
+
+  if (!user) {
     return <LoginPage onLogin={handleLogin} />;
   }
 
@@ -95,7 +121,7 @@ function App() {
       <Sidebar
         activeItem={activePage}
         expanded={navExpanded}
-        onNavigate={setActivePage}
+        onNavigate={navigateToPage}
         onToggleExpanded={() => setNavExpanded((current) => !current)}
         onUtility={handleUtilityAction}
       />
@@ -123,48 +149,58 @@ function App() {
             </div>
           </section>
 
-          {activePage === 'Dashboard' ? (
-            <>
-              <div className="grid grid-cols-1 gap-gutter md:grid-cols-12 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
-                <MembershipCard />
-                <RevenueCard />
-              </div>
-
-              <div className="grid grid-cols-1 gap-gutter md:grid-cols-12 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-                <CheckinsChart />
-                <StatsCards />
-                <BusinessTargets />
-              </div>
-
-              <section className="animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
-                <div className="mb-4 flex items-end justify-between gap-4">
-                  <div>
-                    <h3 className="font-headline text-headline-md font-semibold text-on-surface">Quick Actions</h3>
-                    <p className="mt-1 text-sm text-on-surface-variant">Fast paths for the tasks managers use most.</p>
+          <Routes>
+            <Route
+              path="/"
+              element={(
+                <>
+                  <div className="grid grid-cols-1 gap-gutter md:grid-cols-12 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
+                    <MembershipCard />
+                    <RevenueCard />
                   </div>
-                </div>
-                <ActionCards onAction={handleQuickAction} />
-              </section>
-            </>
-          ) : activePage === 'Settings' ? (
-            <SettingsWorkspace config={moduleConfig} />
-          ) : (
-            <div style={{ animationDelay: '0.1s' }}>
-              <CrudWorkspace
-                moduleKey={activePage}
-                config={moduleConfig}
-                requestedAction={requestedAction}
-                onActionHandled={() => setRequestedAction(null)}
+
+                  <div className="grid grid-cols-1 gap-gutter md:grid-cols-12 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                    <CheckinsChart />
+                    <StatsCards />
+                    <BusinessTargets />
+                  </div>
+
+                  <section className="animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
+                    <div className="mb-4 flex items-end justify-between gap-4">
+                      <div>
+                        <h3 className="font-headline text-headline-md font-semibold text-on-surface">Quick Actions</h3>
+                        <p className="mt-1 text-sm text-on-surface-variant">Fast paths for the tasks managers use most.</p>
+                      </div>
+                    </div>
+                    <ActionCards onAction={handleQuickAction} />
+                  </section>
+                </>
+              )}
+            />
+            <Route path="/settings" element={<SettingsWorkspace config={moduleConfigs.Settings} />} />
+            {Object.keys(crudModules).map((page) => (
+              <Route
+                key={page}
+                path={pageRoutes[page]}
+                element={(
+                  <CrudWorkspace
+                    moduleKey={page}
+                    config={moduleConfigs[page]}
+                    requestedAction={requestedAction}
+                    onActionHandled={() => setRequestedAction(null)}
+                  />
+                )}
               />
-            </div>
-          )}
+            ))}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </div>
       </main>
 
       <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
         <AlertDialogContent className="max-w-[460px] gap-7 rounded-[2rem] px-8 py-9 text-center">
           <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-primary-container text-primary">
-            <Calendar className="h-10 w-10" strokeWidth={2.25} />
+            <LogOut className="h-10 w-10" strokeWidth={2.25} />
           </div>
           <AlertDialogHeader className="items-center space-y-3">
             <AlertDialogTitle className="text-[24px] leading-8">Sign out?</AlertDialogTitle>

@@ -108,20 +108,20 @@ export const crudModules = {
     secondaryLabel: 'Target reached',
     columns: [
       { key: 'name', label: 'Record' },
-      { key: 'amount', label: 'Amount' },
+      { key: 'amount', label: 'Amount', format: 'currency' },
       { key: 'date', label: 'Date' },
       { key: 'status', label: 'Status' },
     ],
     fields: [
       { key: 'name', label: 'Record name', placeholder: 'Premium subscriptions' },
-      { key: 'amount', label: 'Amount', placeholder: '$12,400' },
+      { key: 'amount', label: 'Amount', type: 'number', placeholder: '12400' },
       { key: 'date', label: 'Date', placeholder: 'Apr 23' },
       { key: 'status', label: 'Status', type: 'select', options: ['Paid', 'Booked', 'Pending', 'Overdue'] },
     ],
     seed: [
-      { id: 'fin-1', name: 'Premium subscriptions', amount: '$12,400', date: 'Apr 23', status: 'Paid' },
-      { id: 'fin-2', name: 'Trial conversions', amount: '$3,200', date: 'Apr 20', status: 'Booked' },
-      { id: 'fin-3', name: 'Corporate invoice', amount: '$6,800', date: 'Apr 18', status: 'Pending' },
+      { id: 'fin-1', name: 'Premium subscriptions', amount: 12400, date: 'Apr 23', status: 'Paid' },
+      { id: 'fin-2', name: 'Trial conversions', amount: 3200, date: 'Apr 20', status: 'Booked' },
+      { id: 'fin-3', name: 'Corporate invoice', amount: 6800, date: 'Apr 18', status: 'Pending' },
     ],
   },
 };

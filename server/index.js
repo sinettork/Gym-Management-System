@@ -3,12 +3,15 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { crudModules, settingsModule } from '../src/data/crudConfig.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = join(__dirname, '..', 'data');
 const dbPath = join(dataDir, 'gym-system.sqlite');
 const port = Number(process.env.API_PORT || 4174);
+const jwtSecret = process.env.JWT_SECRET || 'stamina-os-local-secret';
 
 const moduleConfigs = {
   ...crudModules,
@@ -39,6 +42,15 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_audit_logs_module ON audit_logs(module);
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `);
 
 const countByModule = db.prepare('SELECT COUNT(*) AS total FROM records WHERE module = ?');
@@ -50,6 +62,22 @@ const insertAudit = db.prepare(`
   INSERT INTO audit_logs (id, module, record_id, action, summary, created_at)
   VALUES (?, ?, ?, ?, ?, ?)
 `);
+const userCount = db.prepare('SELECT COUNT(*) AS total FROM users').get().total;
+
+if (userCount === 0) {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO users (id, name, email, password_hash, role, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    'user-manager',
+    'Manager',
+    'manager@titangym.local',
+    bcrypt.hashSync('manager', 12),
+    'Manager',
+    now,
+  );
+}
 
 for (const [moduleKey, config] of Object.entries(moduleConfigs)) {
   const existing = countByModule.get(moduleKey).total;
@@ -62,12 +90,44 @@ for (const [moduleKey, config] of Object.entries(moduleConfigs)) {
   }
 }
 
+function parseAmount(value) {
+  return Number(String(value).replace(/[^0-9.-]/g, ''));
+}
+
+const financialRows = db.prepare('SELECT * FROM records WHERE module = ?').all('Financials');
+
+for (const row of financialRows) {
+  const record = JSON.parse(row.payload);
+
+  if (typeof record.amount === 'string') {
+    const amount = parseAmount(record.amount);
+
+    if (Number.isFinite(amount)) {
+      record.amount = amount;
+      db.prepare('UPDATE records SET payload = ? WHERE id = ?').run(JSON.stringify(record), row.id);
+    }
+  }
+}
+
 function sendJson(response, statusCode, payload) {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Content-Type': 'application/json',
+  };
+
+  response.writeHead(statusCode, headers);
+  response.end(JSON.stringify(payload));
+}
+
+function sendJsonWithCookie(response, statusCode, payload, cookie) {
   response.writeHead(statusCode, {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Content-Type': 'application/json',
+    'Set-Cookie': cookie,
   });
   response.end(JSON.stringify(payload));
 }
@@ -108,8 +168,59 @@ function getModuleKey(pathParts) {
   return decodeURIComponent(pathParts[2] || '');
 }
 
+function parseCookies(request) {
+  const cookieHeader = request.headers.cookie || '';
+
+  return cookieHeader.split(';').reduce((cookies, cookie) => {
+    const [key, ...valueParts] = cookie.trim().split('=');
+
+    if (key) {
+      cookies[key] = decodeURIComponent(valueParts.join('='));
+    }
+
+    return cookies;
+  }, {});
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
+}
+
+function signAuthCookie(user) {
+  const token = jwt.sign(publicUser(user), jwtSecret, { expiresIn: '8h' });
+  return `stamina_token=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${8 * 60 * 60}`;
+}
+
+function clearAuthCookie() {
+  return 'stamina_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0';
+}
+
+function getCurrentUser(request) {
+  const token = parseCookies(request).stamina_token;
+
+  if (!token) {
+    return null;
+  }
+
+  try {
+    return jwt.verify(token, jwtSecret);
+  } catch {
+    return null;
+  }
+}
+
 function normalizePayload(config, payload) {
   return config.fields.reduce((values, field) => {
+    if (field.type === 'number') {
+      values[field.key] = parseAmount(payload[field.key]);
+      return values;
+    }
+
     values[field.key] = String(payload[field.key] || '').trim();
     return values;
   }, {});
@@ -121,6 +232,14 @@ function validatePayload(moduleKey, config, payload, existingRecordId = '') {
 
   if (missingField) {
     return { error: `${missingField.label} is required` };
+  }
+
+  const invalidNumberField = config.fields.find((field) => (
+    field.type === 'number' && (!Number.isFinite(nextPayload[field.key]) || nextPayload[field.key] <= 0)
+  ));
+
+  if (invalidNumberField) {
+    return { error: `${invalidNumberField.label} must be a positive number` };
   }
 
   const duplicateName = db
@@ -159,8 +278,56 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+    try {
+      const payload = await parseBody(request);
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(payload.email || '').trim());
+
+      if (!user || !bcrypt.compareSync(String(payload.password || ''), user.password_hash)) {
+        sendJson(response, 401, { error: 'Invalid email or password' });
+        return;
+      }
+
+      writeAudit('Auth', user.id, 'login', user.email);
+      sendJsonWithCookie(response, 200, { user: publicUser(user) }, signAuthCookie(user));
+    } catch (error) {
+      sendJson(response, 500, { error: error.message || 'Login failed' });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+    const currentUser = getCurrentUser(request);
+
+    if (currentUser) {
+      writeAudit('Auth', currentUser.id, 'logout', currentUser.email);
+    }
+
+    sendJsonWithCookie(response, 200, { ok: true }, clearAuthCookie());
+    return;
+  }
+
+  if (url.pathname === '/api/auth/me' && request.method === 'GET') {
+    const currentUser = getCurrentUser(request);
+
+    if (!currentUser) {
+      sendJson(response, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    sendJson(response, 200, { user: currentUser });
+    return;
+  }
+
   if (pathParts[0] !== 'api' || pathParts[1] !== 'modules') {
     sendJson(response, 404, { error: 'Not found' });
+    return;
+  }
+
+  const currentUser = getCurrentUser(request);
+
+  if (!currentUser) {
+    sendJson(response, 401, { error: 'Unauthorized' });
     return;
   }
 
